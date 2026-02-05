@@ -1,5 +1,3 @@
-from datetime import datetime
-
 GENERATE_QUERIES_PROMPT = """
 You are an expert Information Retrieval Specialist. Your task is to analyze a user's research request and generate a list of distinct, targeted search queries.
 
