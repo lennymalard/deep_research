@@ -15,12 +15,17 @@ current_date = datetime.now()
 
 class QueryGenerator:
     def __init__(self, model: str = "qwen3:8b"):
-        self.llm = ChatOllama(model=model)
+        self.llm = ChatOllama(
+            model=model,
+            num_predict=4096,
+            format="json"
+        )
         self.structured_llm = self.llm.with_structured_output(GenerateQueries)
         self.system_prompt = GENERATE_QUERIES_PROMPT
 
     def generate_queries(self, state: QueryGeneratorState):
         logging.info("Entered in the 'generate_queries' node")
+        search_iteration = state.get("search_iteration", 0) + 1
         prompt = [
             SystemMessage(self.system_prompt),
             SystemMessage(f"[USER QUERY]: {state["user_query"]}"),
@@ -39,11 +44,15 @@ class QueryGenerator:
                 logging.info(e)
         search_queries = response.search_queries
         logging.info(f"search_queries: {search_queries}")
-        return {"search_queries": search_queries}
+        return {"search_queries": search_queries, "search_iteration": search_iteration}
 
 class Researcher:
     def __init__(self, model: str = "qwen3:8b", search_api: str = "ddgs"):
-        self.llm = ChatOllama(model=model)
+        self.llm = ChatOllama(
+            model=model,
+            num_predict=4096,
+            format="json"
+        )
         self.structured_llm = self.llm.with_structured_output(Summarize)
         self.system_prompt = SUMMARIZER_PROMPT
         self.search_api = SearchWrapper(api=search_api)
@@ -83,7 +92,10 @@ class Researcher:
 
 class Reviewer:
     def __init__(self, model: str = "qwen3:8b"):
-        self.llm = ChatOllama(model=model)
+        self.llm = ChatOllama(
+            model=model,
+            format="json"
+        )
         self.structured_llm = self.llm.with_structured_output(Review)
         self.system_prompt = REVIEWER_PROMPT
 
@@ -96,6 +108,7 @@ class Reviewer:
 
     def review(self, state: ReviewerState):
         logging.info("Entered in the 'review' node")
+        search_iteration = state["search_iteration"]
         response = Review(is_search_complete=False, justification="An error occurred during review.")
         for _ in range(5):
             try:
@@ -103,21 +116,29 @@ class Reviewer:
                     SystemMessage(self.system_prompt),
                     SystemMessage(f"[CURRENT DATE AND TIME]: {current_date}"),
                     SystemMessage(f"[USER QUERY]: {state["user_query"]}"),
-                    SystemMessage(f"[SUMMARIES]: {state["summaries"]}")
+                    SystemMessage(f"[SUMMARIES]: {state["summaries"]}"),
+                    SystemMessage(f"[SEARCH ITERATION]: {state["search_iteration"]}")
                 ]
                 response = self.structured_llm.invoke(prompt)
                 break
             except Exception as e:
                 logging.info(e)
-        is_search_complete = response.is_search_complete
-        justification = response.justification
+        if search_iteration >= 3:
+            is_search_complete = True
+            justification = "Maximum search iteration reached. " + response.justification
+        else:
+            is_search_complete = response.is_search_complete
+            justification = response.justification
         logging.info(f"is_search_complete: {is_search_complete}")
         logging.info(f"justification: {justification}")
         return {"review": {"is_search_complete": is_search_complete, "justification": justification}}
 
 class Writer:
     def __init__(self, model: str = "qwen3:8b"):
-        self.llm = ChatOllama(model=model)
+        self.llm = ChatOllama(
+            model=model,
+            format="json"
+        )
         self.structured_llm = self.llm.with_structured_output(Write)
         self.system_prompt = WRITER_PROMPT
 
